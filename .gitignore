@@ -2,3 +2,4 @@
 .idea
 out
 web/WEB-INF/lib/libtensorflow_jni-1.14.0.jar
+target
