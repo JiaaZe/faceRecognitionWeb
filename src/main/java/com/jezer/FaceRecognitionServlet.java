@@ -13,6 +13,8 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Base64;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.csvreader.CsvReader;
 import com.csvreader.CsvWriter;
 import org.tensorflow.SavedModelBundle;
@@ -40,7 +42,6 @@ public class FaceRecognitionServlet extends HttpServlet {
         long startTime = System.currentTimeMillis();
         String path = getServletContext().getRealPath("/");
         SavedModelBundle model = SavedModelBundle.load(path + "model", "TAG");
-
         tfSession = model.session();
         float[][][][] warmUp = new float[1][160][160][3];
         Tensor inputX = Tensor.create(warmUp);
@@ -70,6 +71,7 @@ public class FaceRecognitionServlet extends HttpServlet {
         String id = request.getParameter("id");
         String btnType = request.getParameter("btnType");
         String basePath = request.getSession().getServletContext().getRealPath("");
+        System.out.println(basePath);
         System.out.println("-----------------");
         System.out.println(step + " " + name + " " + id + " " + btnType + " ");
 
@@ -108,7 +110,7 @@ public class FaceRecognitionServlet extends HttpServlet {
             }
         }
         /*调用模型的步骤*/
-        else {
+        else if ("step2".equals(step)) {
             /*前端传递rgb时的代码*/
             /*String[] frontTest = request.getParameter("frontface").split(",");
             String[] leftTest = request.getParameter("leftface").split(",");
@@ -160,7 +162,7 @@ public class FaceRecognitionServlet extends HttpServlet {
                     writeCSV(basePath + "/test.csv", name, id, featuresInput[0], featuresInput[1], featuresInput[2]);
                     /*注册成功*/
                     response.getWriter().println("2");
-                } else {
+                } else if ("login".equals(btnType)) {
                     /*登录*/
                     /*点击注册时有此人 加载此人人脸数据*/
                     if (regStatus == 5) {
@@ -176,6 +178,18 @@ public class FaceRecognitionServlet extends HttpServlet {
                         /*不同人*/
                         response.getWriter().println("0");
                     }
+                } else {
+                    assert "faceLogin".equals(btnType);
+                    String[] result = loginWithFace(basePath + "/test.csv", featuresInput);
+                    JSONArray jsonArray = new JSONArray();
+                    JSONObject jsonObject = new JSONObject();
+                    jsonObject.put("code", result[0]);
+                    jsonObject.put("id", result[1]);
+                    jsonObject.put("name", result[2]);
+                    jsonArray.add(jsonObject);
+                    String jsonString = jsonArray.toJSONString();
+                    System.out.println(jsonString);
+                    response.getWriter().println(jsonString);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -186,6 +200,43 @@ public class FaceRecognitionServlet extends HttpServlet {
         }
     }
 
+    private String[] loginWithFace(String path, float[][] featureIn) {
+        String[] result = new String[3];
+        result[0] = "-1";
+        assert new File(path).exists();
+        try {
+            CsvReader reader = new CsvReader(path, ',', Charset.forName("UTF-8"));
+            // 跳过表头 如果需要表头的话，这句可以忽略
+            reader.readHeaders();
+            // 逐行读入除表头的数据
+            long a = System.currentTimeMillis();
+            while (reader.readRecord()) {
+                float[][] features = new float[3][512];
+//                long b = System.nanoTime();
+                features[0] = stringToFloatArr(reader.getValues()[2]);
+                features[1] = stringToFloatArr(reader.getValues()[3]);
+                features[2] = stringToFloatArr(reader.getValues()[4]);
+//                System.out.println("read csv, total spent: " + (System.nanoTime() - b) + "ns");
+                float distance = calDist(featureIn, features);
+//                System.out.println("1 row total spent: " + (System.nanoTime() - b) + "ns");
+                System.out.println("distance: " + distance);
+                if (distance <= 0.8) {
+//                    System.out.println("find person, spent: " + (System.currentTimeMillis() - a) + "ms");
+                    /*id*/
+                    result[0] = "3";
+                    result[1] = reader.getValues()[0];
+                    /*name*/
+                    result[2] = reader.getValues()[1];
+                    return result;
+                }
+            }
+            System.out.println("can't find person, spent: " + (System.currentTimeMillis() - a) + "ms\n");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
     private void updateCSV(String path, String name, String id, float[][] feature1, float[][] feature2) {
 
         float[][] newFeature = new float[3][512];
@@ -194,8 +245,6 @@ public class FaceRecognitionServlet extends HttpServlet {
                 newFeature[i][j] += feature1[i][j] * 0.9 + feature2[i][j] * 0.1;
             }
         }
-
-        System.out.println("!!!!!" + feature1[0][0] + " " + feature2[0][0] + " " + newFeature[0][0]);
 
         try {
             String newCSV = path + "/temp.csv";
@@ -247,7 +296,7 @@ public class FaceRecognitionServlet extends HttpServlet {
          * @author: JiaZe
          * @date: 2020/5/11
          */
-        long a = System.currentTimeMillis();
+//        long a = System.currentTimeMillis();
         float[] avg = new float[512];
 
         File file = new File(folderPath);
@@ -259,8 +308,6 @@ public class FaceRecognitionServlet extends HttpServlet {
         assert fileName != null;
         for (String image : fileName) {
             String imgPath = folderPath + "/" + image;
-
-
             float[] tmp = calFeature(imgPath);
             for (int i = 0; i < 512; i++) {
                 avg[i] += tmp[i];
@@ -270,12 +317,12 @@ public class FaceRecognitionServlet extends HttpServlet {
             }
             j++;
         }
-        System.out.println("calAvgFeature: " + (System.currentTimeMillis() - a) + "ms\n");
+//        System.out.println("calAvgFeature: " + (System.currentTimeMillis() - a) + "ms\n");
         return avg;
     }
 
     private float[] calFeature(String imgPath) throws Exception {
-        long a = System.currentTimeMillis();
+//        long a = System.currentTimeMillis();
         /**
          * @description: 计算人脸图片的特征值
          * @param imgPath: 图片路径
@@ -285,11 +332,11 @@ public class FaceRecognitionServlet extends HttpServlet {
          */
         Tensor inputX = Tensor.create(getImagePixel(imgPath));
         Tensor inputY = Tensor.create(false);
-
-        Tensor result = tfSession.runner().feed("image_batch", inputX).feed("phase_train", inputY).fetch("embeddings").run().get(0);
+        Tensor result = tfSession.runner().feed("image_batch", inputX)
+                .feed("phase_train", inputY).fetch("embeddings").run().get(0);
         float[][] ans = new float[1][512];
         result.copyTo(ans);
-        System.out.println("spend time: " + (System.currentTimeMillis() - a) + "ms");
+//        System.out.println("spend time: " + (System.currentTimeMillis() - a) + "ms");
         return ans[0];
     }
 
@@ -344,7 +391,7 @@ public class FaceRecognitionServlet extends HttpServlet {
     }
 
     private float calDist(float[][] feature1, float[][] feature2) {
-        long a = System.currentTimeMillis();
+//        long a = System.nanoTime();
         double[] distances = new double[3];
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 512; j++) {
@@ -352,7 +399,7 @@ public class FaceRecognitionServlet extends HttpServlet {
             }
             distances[i] = Math.sqrt(distances[i]);
         }
-        System.out.println("calDist: " + (System.currentTimeMillis() - a) + "ms\n");
+//        System.out.println("calDist: " + (System.nanoTime() - a) + "ns");
         return (float) (distances[0] * 0.7 + distances[1] * 0.15 + distances[2] * 0.15);
     }
 
@@ -447,15 +494,32 @@ public class FaceRecognitionServlet extends HttpServlet {
     }
 
     private float[] stringToFloatArr(String string) {
-        long a = System.currentTimeMillis();
-        String[] s = string.split(", ");
-        float[] floats = new float[s.length];
-        for (int i = 0; i < s.length; i++) {
-            floats[i] = Float.parseFloat(s[i]);
+        float[] floatss = new float[512];
+        int j = 0;
+        StringBuffer floatString = new StringBuffer();
+        for (int i = 0; i < string.length(); i++) {
+            char c = string.charAt(i);
+            if (c != ',') {
+                floatString.append(c);
+            } else {
+                floatss[j++] = Float.parseFloat(String.valueOf(floatString));
+                i++;
+                floatString = new StringBuffer();
+            }
         }
-        System.out.println("stringToFloatArr : " + (System.currentTimeMillis() - a) + "ms");
-        return floats;
-
+        floatss[511] = Float.parseFloat(String.valueOf(floatString));
+        return floatss;
+//        long start = System.nanoTime();
+//        String[] s = string.split(", ");
+//        float[] floats = new float[s.length];
+//        for (int i = 0; i < s.length; i++) {
+//            floats[i] = Float.parseFloat(s[i]);
+//        }
+////        System.out.println("stringToFloatArr : " + (System.nanoTime() - start) + "ns");
+//        System.out.println(Arrays.toString(floats));
+//        System.out.println();
+//        System.out.println(Arrays.toString(floatss));
+//        return floats;
     }
 
     public float[][][][] getImagePixel(String image) throws Exception {

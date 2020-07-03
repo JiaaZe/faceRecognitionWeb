@@ -5,7 +5,7 @@
   Time: 16:09
   To change this template use File | Settings | File Templates.
 --%>
-<%@ page contentType="text/html;charset=UTF-8"%>
+<%@ page contentType="text/html;charset=UTF-8" %>
 <%
     String path = request.getContextPath();
     System.out.println(path);
@@ -40,7 +40,7 @@
 
 <div id="form-div">
     <form id="profileFrom" onsubmit="return postProfileData()">
-
+        <%--姓名输入栏位--%>
         <div style="margin-top: 5px;">
             <div class="div1">
                 姓名：
@@ -48,10 +48,10 @@
             <div class="div2">
                 <input name="userName" type="text" id="nameInput" tabindex="1"
                        size="15" value="" onclick="initialStatus();" onchange="initialButton();"
-                placeholder=""/>
+                       placeholder=""/>
             </div>
         </div>
-
+        <%--id输入栏位--%>
         <div style="margin-top: 5px;">
             <div class="div1">
                 ID:
@@ -62,14 +62,13 @@
             </div>
         </div>
 
-
         <div style="display: inline-block;margin-top: 5px;">
             <input id="register" type="submit" value="注册" onclick="check(this);initialStatus();" disabled>
             <input id="login" type="submit" value="登录" onclick="check(this);initialStatus();" disabled>
             <input type="reset" value="重置" onclick="initialStatus();">
         </div>
         <input id="btn_type" name="btnType" style="display: none;"/>
-        <input name="step" style="display: none;" value="step1"/>
+        <input id="step" name="step" style="display: none;" value="step1"/>
     </form>
 
 </div>
@@ -77,10 +76,11 @@
 <div style="margin-top: 5px;">
     <div class="control" style="display: inline;">
         <button id="startAndStop" disabled>开始</button>
+        <button id="login_with_face">人脸登录</button>
     </div>
     <div id="tips" style="display: inline"></div>
-
 </div>
+
 <p class="err" id="errorMessage"></p>
 <div>
     <table cellpadding="0" cellspacing="0" width="0" border="0">
@@ -97,7 +97,6 @@
             <td>
                 <canvas id="frontCanvasOutput" width=160 height=160></canvas>
             </td>
-
             <td>
                 <canvas id="leftCanvasOutput" width=160 height=160></canvas>
             </td>
@@ -125,6 +124,7 @@
     let streaming = false;
     let videoInput = document.getElementById('videoInput');
     let startAndStop = document.getElementById('startAndStop');
+    let faceLoginBtn = document.getElementById('login_with_face')
     let video = document.getElementById('videoInput');
     let status = document.getElementById('status');
     let tip = document.getElementById("tips");
@@ -142,17 +142,17 @@
     let rightCtx = rightCanvas.getContext('2d');
     let videoCtx = document.getElementById("videoCopy").getContext('2d');
     function showVideo() {
-        videoCtx.drawImage(video,0,0,320,240);
+        videoCtx.drawImage(video, 0, 0, 320, 240);
         videoCtx.beginPath();
         //设置弧线的颜色为蓝色
         videoCtx.strokeStyle = "white";
         var circle = {
-            x : 160,    //圆心的x轴坐标值
-            y : 120,    //圆心的y轴坐标值
-            r : 100        //圆的半径
+            x: 160,    //圆心的x轴坐标值
+            y: 120,    //圆心的y轴坐标值
+            r: 100        //圆的半径
         };
         //沿着坐标点(100,100)为圆心、半径为50px的圆的顺时针方向绘制弧线
-        videoCtx.arc(circle.x, circle.y, circle.r, 0, 2*Math.PI, false);
+        videoCtx.arc(circle.x, circle.y, circle.r, 0, 2 * Math.PI, false);
         //按照指定的路径绘制弧线
         videoCtx.stroke();
     }
@@ -165,16 +165,17 @@
         if (nameInput.value != "" && idInput.value != "") {
             loginBtn.removeAttribute("disabled");
             regBtn.removeAttribute('disabled');
-            setTimeout(setButton,10);
-        }
-        else {
-            loginBtn.disabled=true;
-            regBtn.disabled=true;
-            setTimeout(setButton,10);
+            setTimeout(setButton, 10);
+        } else {
+            loginBtn.disabled = true;
+            regBtn.disabled = true;
+            setTimeout(setButton, 10);
         }
 
     }
+
     setButton();
+
     /*传递个人资料*/
     function postProfileData() {
         $.ajax({
@@ -225,12 +226,25 @@
                 } else if (msg == 2) {
                     status.style.color = "green";
                     status.innerHTML = "注册成功";
+                } else {
+                    console.log(msg);
+                    var json = eval("(" + msg + ")")[0];
+                    var code = json.code;
+                    console.log(json);
+                    console.log(status);
+                    if (code == 3){
+                        var id = json.id;
+                        var name = json.name;
+                        status.innerHTML = "你好 "+id+"-"+name+"!";
+                    }
+                    else{
+                        status.innerHTML = "还没注册?\n输入姓名、id去注册吧！";
+                    }
                 }
             }
         });
         return false;
     }
-
 
     function myPost() {
         status.innerHTML = "...检测中...";
@@ -279,12 +293,11 @@
         front_classifier = new cv.CascadeClassifier();
         left_classifier = new cv.CascadeClassifier();
 
-        front_classifier.load('haarcascade_frontalface_default.xml');
-        left_classifier.load('haarcascade_profileface.xml');
-        console.log("processStart");
+        let a = front_classifier.load('front.xml');
+        let b= left_classifier.load('profile.xml');
+        console.log(a,b)
         setTimeout(processVideo, 40);
     }
-
     function processVideo() {
         try {
             if (!streaming) {
@@ -312,11 +325,15 @@
             cap.read(src);
             src.copyTo(dst);
             cv.cvtColor(dst, gray, cv.COLOR_RGBA2GRAY, 0);
+            console.log(gray)
+
             // detect faces.
             let msize = new cv.Size(video.height / 2, video.height / 2);
 
             front_classifier.detectMultiScale(gray, frontfaces, 1.3, 3, 0, msize);
             left_classifier.detectMultiScale(gray, leftfaces, 1.3, 3, 0, msize);
+            console.log(front_classifier)
+            if (frontfaces.size()>0) console.log(frontfaces)
             // 检测正脸
             if (front_number != 0 && left_number != 0 && right_number != 0) {
                 status.innerHTML = "目视前方";
@@ -341,7 +358,8 @@
                     /*前端传递base64时的代码*/
                     var frontData = frontCanvas.toDataURL('image/jpeg', 1.0);
                     frontArr += frontData;
-
+                    console.log(frontData)
+                    console.log(frontArr)
                     front_number--;
                 }
 
@@ -425,21 +443,39 @@
 
     function initialStatus() {
         status.innerText = '';
-        tip.innerText='';
+        tip.innerText = '';
         status.style.color = "black";
     }
-    function initialButton(){
+
+    function initialButton() {
         loginBtn.disabled = true;
-        regBtn.disabled=true;
-        startAndStop.disabled=true;
+        regBtn.disabled = true;
+        startAndStop.disabled = true;
     }
+
+    faceLoginBtn.addEventListener('click', () => {
+        console.log("faceLoginBtn")
+        initialStatus();
+        document.getElementById("btn_type").value = "faceLogin";
+        if (!streaming) {
+            tip.innerHTML = '';
+            utils.clearError();
+            startAndStop.disabled = true;
+            utils.startCamera('qvga', onVideoStarted, 'videoInput');
+        }
+        /*开始状态*/
+        else {
+            utils.stopCamera();
+            onVideoStopped();
+        }
+    });
 
     startAndStop.addEventListener('click', () => {
         /*未开始状态*/
         if (!streaming) {
             tip.innerHTML = '';
             utils.clearError();
-            startAndStop.disabled=true;
+            startAndStop.disabled = true;
             utils.startCamera('qvga', onVideoStarted, 'videoInput');
         }
         /*开始状态*/
@@ -452,7 +488,7 @@
     function onVideoStarted() {
         streaming = true;
         startAndStop.innerText = '停止';
-        startAndStop.disabled=false;
+        startAndStop.disabled = false;
         videoInput.width = videoInput.videoWidth;
         videoInput.height = videoInput.videoHeight;
         processStart();
@@ -474,8 +510,8 @@
     utils.loadOpenCv(() => {
         let profileCascadeFile = 'js/haarcascade_profileface.xml';
         let faceCascadeFile = 'js/haarcascade_frontalface_default.xml';
-        utils.createFileFromUrl('haarcascade_profileface.xml', profileCascadeFile, () => {
-            utils.createFileFromUrl('haarcascade_frontalface_default.xml', faceCascadeFile, () => {
+        utils.createFileFromUrl('profile.xml', profileCascadeFile, () => {
+            utils.createFileFromUrl('front.xml', faceCascadeFile, () => {
                 // startAndStop.removeAttribute('disabled');
             });
         });
